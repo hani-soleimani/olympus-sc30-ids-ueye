@@ -1,0 +1,40 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build and packaging
+build/
+dist/
+*.egg-info/
+
+# Test and tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+
+# Camera recordings and generated images
+captures/
+recordings/
+*.mp4
+*.avi
+*.mov
+*.etl
+*.bmp
+*.png
+*.jpg
+*.jpeg
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
