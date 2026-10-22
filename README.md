@@ -43,10 +43,12 @@ An 8-second continuous-acquisition test at 2×2 binning and 10 ms exposure produ
 
 The buffers were 1024×768, 32 bits per pixel, color mode 0, with a 4096-byte row pitch. The pixel-clock test observed zero skipped sequence-buffer slots and zero `is_GetActSeqBuf` errors. One long interval occurred in each run; the longest was 68.75 ms at 50 MHz. These are measurements from continuous acquisition, not proof of zero sensor or USB frame loss.
 
+A desktop preview run on 2026-10-22 confirmed approximately **35.8 displayed FPS** with the driver reporting about 35.8 FPS. Across 1,286 displayed frames, rolling interval medians stayed around 27.6–27.9 ms; rolling p95 values near the end were about 30–33 ms. The run was stopped with Ctrl+C: acquisition cleanup and restoration completed successfully (including 24 MHz clock, full-resolution AOI, original exposure and frame rate), followed by a Python `KeyboardInterrupt` traceback because the interrupt occurred during the polling sleep. Use Q/Esc or close the image window for the normal final timing summary.
+
 The acquisition rate, displayed rate, and motion-to-display latency describe different things:
 
 - **Acquisition FPS** is how quickly new camera frames arrive in the IDS sequence buffers. The test measured about 35.6 FPS at 50 MHz.
-- **Displayed FPS** is how quickly this Python/OpenCV preview copies, converts, and submits frames to its window. It can be lower than acquisition FPS because of copying, color conversion, window scheduling, and display refresh. The preview reports this while running; it has not yet been independently measured on the desktop.
+- **Displayed FPS** is how quickly this Python/OpenCV preview copies, converts, and submits frames to its window. It can be lower than acquisition FPS because of copying, color conversion, window scheduling, and display refresh. This project has now measured the preview on the desktop at approximately 35.8 displayed FPS in the user-run check above.
 - **Motion-to-display latency** is the time from a physical bead moving to that change appearing on screen. Frame-rate measurements alone do not determine it; this requires a timed motion/visual test or a high-speed recording of both the event and display.
 
 ## Experiments
@@ -81,3 +83,4 @@ tracking/     Reserved for future bead/particle tracking code
 - Camera changes are kept in separate experiments. The 50 MHz preview is its own file and the previous 17 FPS preview was copied unchanged for comparison.
 - `uc480_64.dll` and the camera driver must match the installed 64-bit IDS software. Do not add DLL binaries or driver files to Git.
 - A preview FPS label reports host display submissions; it is not a motion-to-display latency measurement.
+
