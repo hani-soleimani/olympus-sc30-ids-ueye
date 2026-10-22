@@ -32,6 +32,16 @@ The preview requests 2×2 binning (1024×768 output), 50 MHz pixel clock, approx
 
 The script saves the original binning, AOI, pixel clock, exposure, and configured frame rate before changing them. It stops acquisition, clears the sequence, frees buffers, restores those settings, verifies the readbacks, and closes the camera handle on normal exit. Avoid force-killing Python or disconnecting the camera during a run because that bypasses Python cleanup.
 
+## Color-corrected BGR8 preview
+
+To show the fixed color-corrected view only, close other camera applications and run:
+
+```powershell
+.\.venv\Scripts\python.exe experiments\ids_ueye_color_balance_preview.py
+```
+
+This separate experiment uses the verified 24-bit packed BGR8 camera mode at 2×2 binning, 1024×768, 50 MHz, approximately 10 ms exposure, and the maximum frame rate reported by the driver. It starts with fixed software gains **B=1.15, G=0.75, R=1.16**, based on a one-time neutral-patch measurement. The corrected image is the only image shown; the original BGR8 buffer is saved unmodified under `captures/` for later comparison. The gain sliders adjust the displayed image, not camera hardware settings, and no per-frame automatic white balance is applied. The script restores the camera settings it read at startup when stopped normally.
+
 ## Measured performance
 
 An 8-second continuous-acquisition test at 2×2 binning and 10 ms exposure produced these results:
@@ -61,6 +71,11 @@ All experiments are standalone scripts and do not import the TWAIN connector:
 - `experiments/ids_ueye_read_capabilities.py` queries AOI, binning, color-depth, exposure, and timing capabilities without setting values.
 - `experiments/ids_ueye_live_probe.py` tests continuous acquisition using current settings without changing them.
 - `experiments/ids_ueye_live_preview_17fps.py` preserves the earlier 2×2 low-rate preview for comparison.
+- `experiments/ids_ueye_live_preview_bgr8.py` tests verified 24-bit BGR8 buffers and displays the BGR image directly.
+- `experiments/ids_ueye_color_balance_preview.py` displays a fixed-gain color-corrected BGR8 image and saves the exact raw frame.
+- `camera/ids_ueye_raw_stripe_diagnostic.py` saves an unmodified camera buffer and analyzes column intensity profiles for fixed vertical stripes.
+- `camera/ids_ueye_live_view_compare.py` contains alternate live-view diagnostics.
+- `tracking/ids_ueye_live_bead_tracking.py` is an experimental live bead tracker that records annotated video and per-frame bead positions; see `tracking/README.md`.
 
 For example, close all camera clients and run a reversible rate test with:
 
@@ -71,9 +86,9 @@ For example, close all camera clients and run a reversible rate test with:
 ## Project layout
 
 ```text
-camera/       Interactive 50 MHz SC30 preview
-experiments/  Capability queries and acquisition benchmarks
-tracking/     Reserved for future bead/particle tracking code
+camera/       Interactive preview and raw image diagnostics
+experiments/  Capability queries, acquisition benchmarks, and BGR8/color tests
+tracking/     Experimental live bead tracking and documentation
 ```
 
 ## Safety and troubleshooting
