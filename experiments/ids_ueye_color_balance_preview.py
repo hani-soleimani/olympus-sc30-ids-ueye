@@ -4,7 +4,8 @@ Separate from the known-good preview. Configures 2x2 binning, 50 MHz,
 approximately 10 ms exposure, and maximum driver-reported frame rate.
 Explicitly requests legacy RGB24 (packed BGR8), validates mode/depth/pitch,
 saves the first exact raw frame, displays it without pixel conversion, and
-restores camera settings when stopped.
+restores camera settings when stopped. The exposure trackbar changes the
+camera exposure live and displays the driver's readback.
 
 Run from the olympus-sc30-ids-ueye project root after closing DP2:
     .\.venv\Scripts\python.exe experiments\ids_ueye_color_balance_preview.py --calibrate-once
@@ -54,6 +55,9 @@ IS_GET_BLUE_GAIN = 0x8003
 IS_IGNORE_PARAMETER = -1
 IS_EXPOSURE_GET = 7
 IS_EXPOSURE_SET = 12
+IS_EXPOSURE_RANGE_MIN = 0x8000
+IS_EXPOSURE_RANGE_MAX = 0x8001
+IS_EXPOSURE_RANGE_INC = 0x8002
 IS_PIXELCLOCK_CMD_GET_NUMBER = 1
 IS_PIXELCLOCK_CMD_GET_LIST = 2
 IS_PIXELCLOCK_CMD_GET = 5
@@ -311,6 +315,17 @@ def main() -> int:
         check("is_Exposure(SET 10 ms)", exposure(handle, IS_EXPOSURE_SET,
             ctypes.byref(requested_exposure), ctypes.sizeof(requested_exposure)))
         actual_exposure = read_exposure()
+        exposure_range = {}
+        for label, command in (("min_ms", IS_EXPOSURE_RANGE_MIN),
+                               ("max_ms", IS_EXPOSURE_RANGE_MAX),
+                               ("increment_ms", IS_EXPOSURE_RANGE_INC)):
+            value = ctypes.c_double()
+            check(f"is_Exposure(GET {label})", exposure(handle, command,
+                ctypes.byref(value), ctypes.sizeof(value)))
+            exposure_range[label] = value.value
+        if (exposure_range["max_ms"] <= exposure_range["min_ms"] or
+                exposure_range["increment_ms"] <= 0):
+            raise RuntimeError(f"Invalid camera exposure range: {exposure_range}")
 
         min_t, max_t, step_t = ctypes.c_double(), ctypes.c_double(), ctypes.c_double()
         check("is_GetFrameTimeRange", get_time_range(handle, ctypes.byref(min_t),
@@ -352,6 +367,9 @@ def main() -> int:
         print(f"Configured: 2x2, 50 MHz, exposure={actual_exposure:.3f} ms; "
               f"max driver rate={applied_fps.value:.3f} FPS "
               f"(min frame time={min_t.value*1000:.3f} ms)", flush=True)
+        print(f"Camera exposure control range: {exposure_range['min_ms']:.3f}.."
+              f"{exposure_range['max_ms']:.3f} ms in "
+              f"{exposure_range['increment_ms']:.4f} ms steps.", flush=True)
 
         root = Path(__file__).resolve().parents[1]
         output_dir = root / "captures" / f"bgr8_color_compare_2x2_50mhz_{datetime.now():%Y%m%d_%H%M%S}"
@@ -370,6 +388,31 @@ def main() -> int:
         # channel and modestly raises red/blue; sliders can still adjust it.
         color_gains = {"b": 1.15, "g": 0.75, "r": 1.16}
         gain_names = {"b": "Blue gain x100", "g": "Green gain x100", "r": "Red gain x100"}
+        exposure_trackbar = "Exposure (camera ms)"
+        exposure_slider_max = 1000
+        exposure_control = {"requested_ms": actual_exposure}
+
+        def exposure_to_slider_position(value_ms: float) -> int:
+            fraction = ((value_ms - exposure_range["min_ms"]) /
+                        (exposure_range["max_ms"] - exposure_range["min_ms"]))
+            return int(round(max(0.0, min(1.0, fraction)) * exposure_slider_max))
+
+        def exposure_from_slider_position(position: int) -> float:
+            fraction = position / exposure_slider_max
+            requested = exposure_range["min_ms"] + fraction * (
+                exposure_range["max_ms"] - exposure_range["min_ms"])
+            steps = round((requested - exposure_range["min_ms"]) /
+                          exposure_range["increment_ms"])
+            return min(exposure_range["max_ms"], max(
+                exposure_range["min_ms"], exposure_range["min_ms"] +
+                steps * exposure_range["increment_ms"]))
+
+        def update_exposure_request(position: int) -> None:
+            exposure_control["requested_ms"] = exposure_from_slider_position(position)
+
+        cv2.createTrackbar(exposure_trackbar, WINDOW,
+                           exposure_to_slider_position(actual_exposure),
+                           exposure_slider_max, update_exposure_request)
 
         def make_gain_callback(channel: str):
             def update(position: int) -> None:
@@ -387,6 +430,8 @@ def main() -> int:
             gain = max(0.25, min(4.0, float(gain)))
             cv2.setTrackbarPos(gain_names[channel], WINDOW,
                                int(round(gain * 100)) - 25)
+
+        applied_exposure_ms = actual_exposure
 
         def calibrate_from_roi(image: np.ndarray, x: int, y: int,
                                roi_width: int, roi_height: int) -> dict:
@@ -427,8 +472,28 @@ def main() -> int:
               flush=True)
         print(f"Initial fixed software gains B/G/R="
               f"{color_gains['b']:.2f}/{color_gains['g']:.2f}/{color_gains['r']:.2f}.", flush=True)
+        print("Adjust the Exposure (camera ms) slider to change camera exposure; "
+              "higher exposure may reduce FPS.", flush=True)
 
         while deadline is None or time.perf_counter() < deadline:
+            requested_ms = exposure_control["requested_ms"]
+            if abs(requested_ms - applied_exposure_ms) >= exposure_range["increment_ms"] * 0.5:
+                exposure_value = ctypes.c_double(requested_ms)
+                exposure_rc = exposure(handle, IS_EXPOSURE_SET,
+                    ctypes.byref(exposure_value), ctypes.sizeof(exposure_value))
+                if exposure_rc == IS_SUCCESS:
+                    applied_exposure_ms = read_exposure()
+                    exposure_control["requested_ms"] = applied_exposure_ms
+                    print(f"Exposure applied: requested={requested_ms:.4f} ms; "
+                          f"camera readback={applied_exposure_ms:.4f} ms", flush=True)
+                else:
+                    print(f"WARNING: camera rejected exposure {requested_ms:.4f} ms "
+                          f"(IDS error {exposure_rc}); keeping {applied_exposure_ms:.4f} ms",
+                          flush=True)
+                    exposure_control["requested_ms"] = applied_exposure_ms
+                    cv2.setTrackbarPos(exposure_trackbar, WINDOW,
+                                       exposure_to_slider_position(applied_exposure_ms))
+
             active_id, current_ptr, last_ptr = c_int(), c_void_p(), c_void_p()
             rc = get_active(handle, ctypes.byref(active_id),
                             ctypes.byref(current_ptr), ctypes.byref(last_ptr))
@@ -456,6 +521,7 @@ def main() -> int:
                             "frame_bytes_including_row_padding": frame_bytes,
                             "binning": "2x2", "pixel_clock_mhz": 50,
                             "exposure_ms": actual_exposure,
+                            "exposure_range_ms": exposure_range,
                             "configured_fps": applied_fps.value,
                             "ids_color_controls_read_only": color_controls,
                             "raw_file": "frame_unmodified_bgr8.raw",
@@ -495,7 +561,7 @@ def main() -> int:
                     # camera bytes unchanged in the raw capture file above.
                     panel = np.zeros((height.value + 34, width.value, 3), dtype=np.uint8)
                     panel[34:, :] = corrected
-                    cv2.putText(panel, f"Color-corrected BGR8 | fixed gains B={color_gains['b']:.2f} G={color_gains['g']:.2f} R={color_gains['r']:.2f}",
+                    cv2.putText(panel, f"Corrected BGR8 | exposure={applied_exposure_ms:.2f} ms | gains B={color_gains['b']:.2f} G={color_gains['g']:.2f} R={color_gains['r']:.2f}",
                                 (12, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.65,
                                 (255, 255, 255), 1, cv2.LINE_AA)
                     # Fit the single 4:3 camera image on a typical display.
@@ -550,6 +616,7 @@ def main() -> int:
         if first_frame_saved:
             metadata["final_fixed_software_gains_bgr"] = [
                 final_gains["b"], final_gains["g"], final_gains["r"]]
+            metadata["final_exposure_ms_before_restore"] = read_exposure()
             metadata["one_time_neutral_calibration"] = calibration_metadata
             metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
         print(f"Final fixed software gains (B/G/R): {final_gains['b']:.2f}/"

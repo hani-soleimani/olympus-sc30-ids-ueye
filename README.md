@@ -40,7 +40,7 @@ To show the fixed color-corrected view only, close other camera applications and
 .\.venv\Scripts\python.exe experiments\ids_ueye_color_balance_preview.py
 ```
 
-This separate experiment uses the verified 24-bit packed BGR8 camera mode at 2×2 binning, 1024×768, 50 MHz, approximately 10 ms exposure, and the maximum frame rate reported by the driver. It starts with fixed software gains **B=1.15, G=0.75, R=1.16**, based on a one-time neutral-patch measurement. The corrected image is the only image shown; the original BGR8 buffer is saved unmodified under `captures/` for later comparison. The gain sliders adjust the displayed image, not camera hardware settings, and no per-frame automatic white balance is applied. The script restores the camera settings it read at startup when stopped normally.
+This separate experiment uses the verified 24-bit packed BGR8 camera mode at 2×2 binning, 1024×768, 50 MHz, approximately 10 ms exposure, and the maximum frame rate reported by the driver. It starts with fixed software gains **B=1.15, G=0.75, R=1.16**, based on a one-time neutral-patch measurement. The corrected image is the only image shown; the original BGR8 buffer is saved unmodified under `captures/` for later comparison. The **Exposure (camera ms)** slider changes the actual camera exposure, using the supported range and increment reported by IDS; the image overlay and terminal show the camera readback. Longer exposure can reduce delivered FPS. The color gain sliders adjust the displayed image only, and no per-frame automatic white balance is applied. The script restores the camera settings it read at startup when stopped normally.
 
 ## Measured performance
 
