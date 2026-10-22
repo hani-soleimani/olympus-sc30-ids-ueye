@@ -316,16 +316,30 @@ def main() -> int:
             ctypes.byref(requested_exposure), ctypes.sizeof(requested_exposure)))
         actual_exposure = read_exposure()
         exposure_range = {}
+        exposure_range_errors = []
         for label, command in (("min_ms", IS_EXPOSURE_RANGE_MIN),
                                ("max_ms", IS_EXPOSURE_RANGE_MAX),
                                ("increment_ms", IS_EXPOSURE_RANGE_INC)):
             value = ctypes.c_double()
-            check(f"is_Exposure(GET {label})", exposure(handle, command,
-                ctypes.byref(value), ctypes.sizeof(value)))
-            exposure_range[label] = value.value
-        if (exposure_range["max_ms"] <= exposure_range["min_ms"] or
-                exposure_range["increment_ms"] <= 0):
-            raise RuntimeError(f"Invalid camera exposure range: {exposure_range}")
+            rc = exposure(handle, command, ctypes.byref(value), ctypes.sizeof(value))
+            if rc == IS_SUCCESS:
+                exposure_range[label] = value.value
+            else:
+                exposure_range_errors.append(f"{label}: IDS error {rc}")
+        if (exposure_range_errors or
+                exposure_range.get("max_ms", 0) <= exposure_range.get("min_ms", 0) or
+                exposure_range.get("increment_ms", 0) <= 0):
+            # Some SC30/IDS driver builds accept exposure GET/SET but do not
+            # implement the optional range-query commands (error 155). Keep a
+            # useful 1..100 ms UI range; every change is verified by camera
+            # readback, and the slider is repositioned if the driver clamps it.
+            print("Exposure range query unavailable (" + "; ".join(exposure_range_errors) +
+                  "); using a 1..100 ms slider range with 0.1 ms steps. "
+                  "Camera readback will confirm the applied value.", flush=True)
+            exposure_range = {"min_ms": 1.0, "max_ms": 100.0,
+                              "increment_ms": 0.1, "source": "UI fallback"}
+        else:
+            exposure_range["source"] = "IDS driver query"
 
         min_t, max_t, step_t = ctypes.c_double(), ctypes.c_double(), ctypes.c_double()
         check("is_GetFrameTimeRange", get_time_range(handle, ctypes.byref(min_t),
@@ -369,7 +383,8 @@ def main() -> int:
               f"(min frame time={min_t.value*1000:.3f} ms)", flush=True)
         print(f"Camera exposure control range: {exposure_range['min_ms']:.3f}.."
               f"{exposure_range['max_ms']:.3f} ms in "
-              f"{exposure_range['increment_ms']:.4f} ms steps.", flush=True)
+              f"{exposure_range['increment_ms']:.4f} ms steps "
+              f"(source: {exposure_range['source']}).", flush=True)
 
         root = Path(__file__).resolve().parents[1]
         output_dir = root / "captures" / f"bgr8_color_compare_2x2_50mhz_{datetime.now():%Y%m%d_%H%M%S}"
@@ -484,6 +499,8 @@ def main() -> int:
                 if exposure_rc == IS_SUCCESS:
                     applied_exposure_ms = read_exposure()
                     exposure_control["requested_ms"] = applied_exposure_ms
+                    cv2.setTrackbarPos(exposure_trackbar, WINDOW,
+                                       exposure_to_slider_position(applied_exposure_ms))
                     print(f"Exposure applied: requested={requested_ms:.4f} ms; "
                           f"camera readback={applied_exposure_ms:.4f} ms", flush=True)
                 else:
