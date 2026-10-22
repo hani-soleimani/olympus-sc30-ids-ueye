@@ -84,3 +84,5 @@ tracking/     Reserved for future bead/particle tracking code
 - `uc480_64.dll` and the camera driver must match the installed 64-bit IDS software. Do not add DLL binaries or driver files to Git.
 - A preview FPS label reports host display submissions; it is not a motion-to-display latency measurement.
 
+
+Repository: olympus-sc30-ids-ueye
